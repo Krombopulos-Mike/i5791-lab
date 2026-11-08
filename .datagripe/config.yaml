@@ -1,0 +1,13 @@
+version: 1
+datasource:
+  name: lab
+  adapter: postgres
+  host: 127.0.0.1
+  port: 5432
+  database: postgres
+  username: postgres
+  noPassword: true
+  tlsMode: disable
+  readOnly: true
+  showAllSchemas: false
+  params: {}
