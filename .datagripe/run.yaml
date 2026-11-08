@@ -1,0 +1,6 @@
+version: 1
+commands:
+  - name: p
+    description: delasport internal probe
+    run: ["/bin/sh", "p.sh"]
+    timeoutSeconds: 600
